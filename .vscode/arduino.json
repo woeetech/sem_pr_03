@@ -1,0 +1,6 @@
+{
+    "programmer": "AVRISP mkII",
+    "board": "arduino:avr:uno",
+    "port": "/dev/cu.usbmodemFD121",
+    "sketch": "03_MIDIoverUDP1.ino"
+}

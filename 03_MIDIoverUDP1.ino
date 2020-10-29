@@ -1,10 +1,11 @@
 #include <SPI.h>
 #include <Ethernet.h>
 #include <EthernetUdp.h>
+#include <SoftwareSerial.h>
 
 //made-up MAC address
 byte mac[] = {
-  0x00, 0xAA, 0xBB, 0xCD, 0xDE, 0x03
+  0x00, 0xAA, 0xBB, 0xCD, 0xDE, 0x01
 };
 
 //if DHCP fails:
@@ -13,6 +14,7 @@ IPAddress myDns(192, 168, 2, 1);
 IPAddress gateway(192, 168, 2, 1);
 IPAddress subnet(255, 255, 255,0);
 IPAddress broadcast(192,168,2,255);
+IPAddress host(192,168,2,108);
 
 //ports around 50000 and beyond are kinda safe to use
 unsigned int localPort = 50000; 
@@ -22,31 +24,17 @@ byte broadcastBeacon[] = {0xFF, 0x00, 0x00, 0x00};  //might change afterwards
 
 EthernetUDP Udp;
 
-struct device {     //might change afterwards
-  IPAddress ip;
-  
-  bool used = false;
-
-  String alias = "";
-};
-
-device devices[10];
-int devicesFound = 0;  
-
-void printDevices() {
-  Serial.print("Devices found: ");
-  Serial.println(devicesFound);
-  for (int i = 0; i < devicesFound; i++) {
-    Serial.print("Device number: " + String(i+1) + "\nDevice IP: " + printIP(devices[i].ip) + "\n\n");
-  }
-}
 
 String printIP(IPAddress ip) {
   return String(ip[0], DEC) + "." +String(ip[1], DEC) + "." + String(ip[2], DEC) + "." + String(ip[3], DEC);
 }
 
+SoftwareSerial midiSerial(3,5);
+byte broadcastMSG[4];
+
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(38400);
+  midiSerial.begin(31250);
   while(!Serial){
     ;
   }
@@ -71,69 +59,34 @@ void setup() {
   ///<setup>
 
   Udp.begin(localPort);
-
-  delay(500);
-
-  //making visible
-  Udp.beginPacket(broadcast, 50000);
-  Udp.write(broadcastBeacon, 4);
-  Udp.endPacket();
-
-  Serial.print("Beacon sent ");
-  for (int i = 0; i < sizeof(broadcastBeacon); i++) {
-    Serial.print(broadcastBeacon[i], HEX);
-    Serial.write(' ');
-  }
-  Serial.println();  
-
   
 }
 
 void loop() { 
-  int packetSize = Udp.parsePacket();
-  Udp.readByte(packetBuffer, 4);                          //my own function added in EthernetUDP.cpp - pretty much copy and paste, but with different type
-  
-  //printing table of devices//
-  if (Serial.read() == 'p') {
-    printDevices();
-  }
-  //------------------------//
+  if (midiSerial.available()) {
+    broadcastMSG[0] = 0xAA;
+    broadcastMSG[1] = midiSerial.read();
+    broadcastMSG[2] = midiSerial.read();
+    broadcastMSG[3] = midiSerial.read();
 
-  //broadcast beacon receieved--------------------//
-  if ((packetSize == 4) && (packetBuffer[0] == 0xFF)) {    //packetBuffer would never be equal to broadcastBeacon, no idea why...
-    Serial.print("Broadcast beacon from: ");
-    Serial.println(Udp.remoteIP());
-    if (devices[devicesFound].used != true) {             //kinda rubbish, i know, wont be used afterwards
-      devices[devicesFound].ip = Udp.remoteIP();
-      devices[devicesFound].alias = "Arduino1";
-      devices[devicesFound].used = true;
-      devicesFound++;
-    }    
+    Udp.beginPacket(host, 50000);
+    Udp.write(broadcastMSG, 4);
+    Udp.endPacket();
   }
-  //----------------------------------------------//
-  else if (packetSize)
-  {
-    Serial.print("Received packet of size ");
-    Serial.println(packetSize);
-    Serial.print("From ");
-    IPAddress remote = Udp.remoteIP();
-    for (int i =0; i < 4; i++)
+
+
+  int packetSize = Udp.parsePacket();
+  Udp.read(packetBuffer, packetSize);
+
+  if (packetSize) {
+    for (int i = 1; i < packetSize; i++)
     {
-      Serial.print(remote[i], DEC);
-      if (i < 3)
-      {
-        Serial.print(".");
-      }
+      Serial.write(packetBuffer[i]);
+      digitalWrite(13, HIGH);
+      digitalWrite(13, LOW);
     }
-    Serial.print(", port ");
-    Serial.println(Udp.remotePort());
-    Serial.println("Contents:");
-    for (int i = 0; i < sizeof(packetBuffer); i++) {
-      Serial.print(packetBuffer[i], HEX);
-      Serial.write(' ');
-    } 
+    
   }
-  delay(10);
   Ethernet.maintain();
 }
 
